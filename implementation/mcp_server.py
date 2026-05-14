@@ -5,14 +5,23 @@ from __future__ import annotations
 import argparse
 import functools
 import os
+import sys
+from pathlib import Path
 from typing import Any
+
+# Support both `python -m implementation.mcp_server` and `python implementation/mcp_server.py`
+if __package__ is None or __package__ == "":
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from implementation.db.base import DatabaseAdapter
+    from implementation.db.errors import AdapterError, ValidationError
+    from implementation.db.sqlite_adapter import SQLiteAdapter
+else:
+    from .db.base import DatabaseAdapter
+    from .db.errors import AdapterError, ValidationError
+    from .db.sqlite_adapter import SQLiteAdapter
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
-
-from .db.base import DatabaseAdapter
-from .db.errors import AdapterError, ValidationError
-from .db.sqlite_adapter import SQLiteAdapter
 
 
 def _to_tool_error(fn):
@@ -96,7 +105,10 @@ def _make_adapter() -> DatabaseAdapter:
     if backend == "sqlite":
         return SQLiteAdapter(os.getenv("SQLITE_PATH", "lab.db"))
     if backend == "postgres":
-        from .db.postgres_adapter import PostgresAdapter
+        if __package__ is None or __package__ == "":
+            from implementation.db.postgres_adapter import PostgresAdapter
+        else:
+            from .db.postgres_adapter import PostgresAdapter
         dsn = os.getenv("PG_DSN", "postgresql://lab:lab@localhost:55432/lab")
         return PostgresAdapter(dsn)
     raise SystemExit(f"unknown DB_BACKEND={backend!r}; use 'sqlite' or 'postgres'")
@@ -113,7 +125,10 @@ def main() -> None:
     mcp = build_server(adapter)
 
     if args.transport == "http":
-        from .auth import make_bearer_middleware
+        if __package__ is None or __package__ == "":
+            from implementation.auth import make_bearer_middleware
+        else:
+            from .auth import make_bearer_middleware
         import asyncio
         middleware = make_bearer_middleware()
         asyncio.run(mcp.run_http_async(host=args.host, port=args.port, middleware=middleware, stateless_http=True))
