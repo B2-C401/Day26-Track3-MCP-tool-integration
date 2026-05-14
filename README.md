@@ -1,181 +1,154 @@
-# Lab: Build a Database MCP Server with FastMCP and SQLite
+# Day 26 / Track 3 — FastMCP SQLite Lab
 
-## Goal
+A FastMCP server that exposes a small SQLite database (students/courses/enrollments) through MCP tools and resources. Includes a Postgres adapter and Bearer-auth HTTP transport as bonus features.
 
-Build a Model Context Protocol (MCP) server using FastMCP that exposes a small database through:
+Lab spec and grading rubric: see [`docs/lab-spec.md`](docs/lab-spec.md) and [`Rubric.md`](Rubric.md).
+Design doc: [`docs/superpowers/specs/2026-05-14-mcp-sqlite-lab-design.md`](docs/superpowers/specs/2026-05-14-mcp-sqlite-lab-design.md).
 
-- `search`
-- `insert`
-- `aggregate`
+## Setup
 
-You must also expose the database schema as an MCP resource, test the server with Inspector or equivalent tooling, and show the server working from at least one MCP client.
+```bash
+# 1. Install deps (creates .venv)
+uv sync --extra dev --extra postgres
 
-## Learning Outcomes
+# 2. Initialize the SQLite database
+uv run python implementation/init_db.py
 
-By the end of this lab, students should be able to:
+# 3. Run all tests
+uv run pytest -v
 
-- explain what MCP tools and resources are
-- build a FastMCP server in Python
-- connect FastMCP to a SQLite database
-- safely validate database requests before executing SQL
-- expose dynamic schema context through `@mcp.resource(...)`
-- test tool schemas, normal calls, and error responses
-- connect the server to an MCP client such as Claude Code, Codex, or Gemini CLI
-
-## Required Features
-
-### Part 1: MCP Server
-
-Implement a FastMCP server that exposes exactly these tool categories:
-
-1. `search`
-2. `insert`
-3. `aggregate`
-
-Your server may use SQLite for the main implementation. If you want to support PostgreSQL too, design the code so the database layer can be swapped later.
-
-### Part 2: Resource
-
-Expose database schema information as MCP resources:
-
-- one resource for the full database schema
-- one dynamic resource template for a single table schema
-
-Suggested URIs:
-
-- `schema://database`
-- `schema://table/{table_name}`
-
-### Part 3: Validation and Error Handling
-
-Your tools must reject unsafe or invalid requests:
-
-- unknown table names
-- unknown column names
-- unsupported filter operators
-- invalid aggregate requests
-- empty inserts
-
-Do not build SQL by blindly concatenating raw user input.
-
-### Part 4: Testing and Verification
-
-Verify all of the following:
-
-1. the server starts correctly
-2. the three tools are discoverable
-3. the schema resource is discoverable
-4. valid tool calls return useful results
-5. invalid tool calls return clear errors
-6. at least one MCP client can connect and use the server
-
-### Part 5: Demo Deliverables
-
-Prepare:
-
-- GitHub repository
-- setup instructions
-- tool descriptions
-- testing steps
-- at least one client configuration example
-- short demo video, around 2 minutes
-
-Inspector screenshots are recommended if you use MCP Inspector.
-
-## Suggested Project Structure
-
-```text
-implementation/
-  db.py
-  init_db.py
-  mcp_server.py
-  verify_server.py
-  tests/
-    test_server.py
+# 4. Run the end-to-end smoke test
+uv run python implementation/verify_server.py
+# Expected: Summary: 14 passed, 0 failed
 ```
 
-## Recommended Data Model
+## Running the server
 
-Use a small relational dataset so `search`, `insert`, and `aggregate` are easy to demo. Example:
+```bash
+# Stdio (default — for use with Claude Code, Codex, Gemini CLI, Inspector)
+uv run python implementation/mcp_server.py
 
-- `students`
-- `courses`
-- `enrollments`
+# HTTP with Bearer auth
+export MCP_AUTH_TOKEN="dev-secret-token"
+uv run python implementation/mcp_server.py --transport http --port 8765
+```
 
-## Example Tasks to Demonstrate
+## Tools
 
-- search all students in cohort `A1`
-- insert a new student
-- count rows in a table
-- compute average score by cohort
-- read the full schema resource
-- read `schema://table/students`
-- show an invalid request, such as searching a missing table
+- `search(table, columns?, filters?, order_by?, descending?, limit=20, offset=0)`
+- `insert(table, values)`
+- `aggregate(table, metric, column?, filters?, group_by?)` — metrics: `count`, `avg`, `sum`, `min`, `max`
 
-## FastMCP and Inspector References
+Supported filter operators: `=`, `!=`, `<`, `<=`, `>`, `>=`, `LIKE`, `IN`.
 
-- FastMCP quickstart: https://gofastmcp.com/v2/getting-started/quickstart
-- FastMCP resources: https://gofastmcp.com/v2/servers/resources
-- MCP Inspector: https://modelcontextprotocol.io/docs/tools/inspector
+## Resources
 
-## Client Setup Notes
+- `schema://database` — full schema as JSON
+- `schema://table/{table_name}` — single-table schema as JSON
+
+## Client integrations
+
+### MCP Inspector
+
+```bash
+bash scripts/run-inspector.sh
+```
+
+Opens Inspector with absolute paths to `python` and `mcp_server.py`. Uses a local `.npm-cache` so global npm is not touched.
 
 ### Claude Code
 
-Anthropic documents local JSON config and `claude mcp add` flows here:
-
-- https://code.claude.com/docs/en/mcp
-
-Claude Code supports MCP resources via `@server:resource-uri` references and supports environment variable expansion in `.mcp.json`.
-
-### Codex
-
-OpenAI documents Codex MCP setup here:
-
-- https://developers.openai.com/learn/docs-mcp
-
-Codex supports MCP server configuration through the CLI and `~/.codex/config.toml`.
+Edit `.mcp.json` in this directory: replace both `/ABSOLUTE/PATH/TO/uv` and `/ABSOLUTE/PATH/TO/REPO` with the outputs of `which uv` and `pwd`. Then launch Claude Code in this directory.
 
 ### Gemini CLI
 
-Gemini CLI has a built-in MCP manager. In the verified local workflow, the simplest path is:
-
 ```bash
-gemini mcp add sqlite-lab /ABSOLUTE/PATH/TO/python /ABSOLUTE/PATH/TO/implementation/mcp_server.py --description "SQLite lab FastMCP server" --timeout 10000
+gemini mcp add sqlitelab "$(which uv)" run --directory "$PWD" python implementation/mcp_server.py \
+    --description "SQLite lab FastMCP server" --timeout 10000
 gemini mcp list
+
+# Smoke test, headless
+gemini --allowed-mcp-server-names sqlitelab --yolo -p \
+    "List the available tools and run search on students with cohort A1."
 ```
 
-Gemini CLI also documents configuration details here:
+Alias `sqlitelab` deliberately has no underscore — Gemini CLI does not accept underscores in MCP aliases.
 
-- https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/configuration.md
+### HTTP / curl (auth demo)
 
-Expected outcome:
+```bash
+# Missing token -> 401
+curl -sS -X POST http://127.0.0.1:8765/mcp \
+    -H "Content-Type: application/json" \
+    -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
 
-- the server appears as `Connected`
-- Gemini can discover `search`, `insert`, and `aggregate`
-- a headless smoke test works with `gemini --allowed-mcp-server-names sqlite-lab --yolo -p "..."`
+# Valid token -> 200
+curl -sS -X POST http://127.0.0.1:8765/mcp \
+    -H "Authorization: Bearer dev-secret-token" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json, text/event-stream" \
+    -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
+```
 
-### Antigravity
+## Postgres backend (bonus)
 
-Antigravity commonly uses an `mcp_config.json` file with a shape similar to Gemini CLI. Verify the current product behavior in your installed version before grading against exact UI steps.
+Postgres runs in Docker, fully isolated under project name `mcp-sqlite-lab`. **This setup does not touch any other Docker resource on your machine.**
 
-## Deliverable Checklist
+```bash
+# Start Postgres on port 55432 (not 5432, to avoid clashing with any existing instance)
+docker compose -f docker/docker-compose.yml -p mcp-sqlite-lab up -d
 
-- working FastMCP server
-- SQLite database and seed data
-- `search`, `insert`, `aggregate` tools
-- schema resource and schema resource template
-- verification steps
-- automated tests or repeatable verification script
-- client configuration example
-- README with setup and demo steps
-- Inspector startup command or helper script
-- at least one verified Gemini CLI or Claude/Codex client test
+# Run the server against Postgres
+DB_BACKEND=postgres \
+PG_DSN="postgresql://lab:lab@localhost:55432/lab" \
+    uv run python implementation/mcp_server.py
 
-## Bonus
+# Same verify script, against Postgres
+DB_BACKEND=postgres \
+PG_DSN="postgresql://lab:lab@localhost:55432/lab" \
+    uv run python implementation/verify_server.py
 
-Optional bonus:
+# Same pytest suite, with Postgres tests active
+PG_DSN="postgresql://lab:lab@localhost:55432/lab" uv run pytest -v
+```
 
-- add authentication for SSE or HTTP transport
-- support both SQLite and PostgreSQL with the same MCP surface
-- add richer output annotations or pagination
+### Teardown — remove all `mcp-sqlite-lab` Docker resources
+
+```bash
+bash scripts/teardown.sh
+```
+
+This runs `docker compose -p mcp-sqlite-lab down -v --remove-orphans`, which only removes containers, networks, and volumes prefixed `mcp-sqlite-lab`. Other containers and volumes on your machine are not affected.
+
+## Project layout
+
+```
+implementation/
+  mcp_server.py        FastMCP entrypoint (tools + resources)
+  init_db.py           SQLite schema + seed
+  verify_server.py     E2E smoke test
+  auth.py              Bearer-token middleware for HTTP transport
+  db/
+    base.py            DatabaseAdapter ABC
+    sqlite_adapter.py
+    postgres_adapter.py
+    validators.py      identifier + operator + metric whitelist
+    errors.py
+  tests/               pytest suite
+docker/                isolated Postgres compose
+scripts/               teardown.sh, run-inspector.sh
+docs/
+  lab-spec.md          original lab brief
+  Rubric.md            grading rubric
+  superpowers/         design and implementation plan
+```
+
+## Demo video shots (~2 minutes)
+
+1. `uv run pytest` green.
+2. `uv run python implementation/verify_server.py` showing 14 PASS.
+3. Inspector showing the 3 tools and 2 resources.
+4. Gemini CLI headless run, returning real data.
+5. HTTP transport: the two `curl` calls (401 then 200).
+6. `docker compose up` + `verify_server.py` against Postgres, same 14 PASS.
+7. `bash scripts/teardown.sh` removing everything.

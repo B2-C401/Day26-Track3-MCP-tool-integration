@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "sqlite-lab": {
+      "command": "/Users/mac/.local/bin/uv",
+      "args": [
+        "run",
+        "--directory",
+        "/Users/mac/20KAI/day26/Day26-Track3-MCP-tool-integration",
+        "python",
+        "implementation/mcp_server.py"
+      ],
+      "env": {
+        "DB_BACKEND": "sqlite",
+        "SQLITE_PATH": "lab.db"
+      }
+    }
+  }
+}
